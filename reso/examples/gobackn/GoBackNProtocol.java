@@ -15,7 +15,7 @@ public class GoBackNProtocol implements IPInterfaceListener {
 	
 	private final IPHost host; 
 
-    private final int windowSize = 5; //Taille de la fenêtre 
+    private final int windowSize = 3; //Taille de la fenêtre 
     private final int RTT = 1000; //Temps du timer (= 1ms)
 
     private int actualSequenceNumber = 1; //Dernier numéro de séquence envoyé
@@ -23,7 +23,6 @@ public class GoBackNProtocol implements IPInterfaceListener {
     private int expectedSequenceNumber = 1; //Numéro de séquence attendu par le receiver
 
     private ArrayList<TCPSegment> segmentSent = new ArrayList<TCPSegment>(); //Liste des segments envoyé dans l'ordre
-
     private ArrayList<TCPSegment> waitingSegment = new ArrayList<TCPSegment>(); //Liste des segments en attente
 	
 	public GoBackNProtocol(IPHost host) {
@@ -34,14 +33,16 @@ public class GoBackNProtocol implements IPInterfaceListener {
 	@Override
 	public void receive(IPInterfaceAdapter src, Datagram datagram) throws Exception {
     	TCPSegment segment = (TCPSegment) datagram.getPayload();
-		System.out.println("Data (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +
+		
+        if(segment.isAck()){ //Coté sender
+            System.out.println("\u001B[32m Data (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +
 				" host=" + host.name + ", dgram.src=" + datagram.src + ", dgram.dst=" +
 				datagram.dst + ", iif=" + src + ", data=" + segment);
-        if(segment.isAck()){ //Coté sender
+
             int sequenceNumber = segment.getSequenceNumber();
             if(sequenceNumber == this.segmentSent.get(0).getSequenceNumber()){
                 this.segmentSent.remove(0);
-                
+
                 if(this.waitingSegment.size() > 0){ //Si il reste des segments à envoyer
                     TCPSegment segmentToSend = this.waitingSegment.get(0);
                     host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segmentToSend);
@@ -50,6 +51,10 @@ public class GoBackNProtocol implements IPInterfaceListener {
                 }
             }
         } else{ //Coté receiver
+            System.out.println("\u001B[34m Data (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +
+				" host=" + host.name + ", dgram.src=" + datagram.src + ", dgram.dst=" +
+				datagram.dst + ", iif=" + src + ", data=" + segment);
+
             if(segment.getSequenceNumber() == this.expectedSequenceNumber){
                 sendAcknowledgment(datagram);
                 this.ackSequenceNumber++;
@@ -70,7 +75,6 @@ public class GoBackNProtocol implements IPInterfaceListener {
             this.waitingSegment.add(segment);
             this.actualSequenceNumber++;
         }
-        
     }
 
     private void sendAcknowledgment(Datagram datagram) throws Exception{
