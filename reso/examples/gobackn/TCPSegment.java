@@ -2,8 +2,7 @@ package reso.examples.gobackn;
 
 import reso.common.Message;
 
-public class TCPSegment
-implements Message {
+public class TCPSegment implements Message {
 	
 	public final int sequenceNumber; 
     public final int[] data;
@@ -28,6 +27,10 @@ implements Message {
     public boolean isAck(){
         return this.isAck;
     }
+
+	public int getSequenceNumber() {
+		return this.sequenceNumber;
+	}
 
 	@Override
 	public int getByteLength() {

@@ -1,5 +1,7 @@
 package reso.examples.gobackn;
 
+import java.util.ArrayList;
+
 import reso.ip.Datagram;
 import reso.ip.IPAddress;
 import reso.ip.IPHost;
@@ -9,60 +11,69 @@ import reso.ip.IPLayer;
 
 public class GoBackNProtocol implements IPInterfaceListener {
 
-	public static final int IP_PROTO_GOBACKN  = Datagram.allocateProtocolNumber("GOBACKN");
+	public static final int IP_PROTO_GOBACKN = Datagram.allocateProtocolNumber("GOBACKN");
 	
 	private final IPHost host; 
+
+    private final int windowSize = 5; //Taille de la fenêtre 
+    private final int RTT = 1000; //Temps du timer (= 1ms)
+
+    private int actualSequenceNumber = 1; //Dernier numéro de séquence envoyé
+    private int ackSequenceNumber = 1; //Dernier numéro d'ACK de séquence envoyé
+    private int expectedSequenceNumber = 1; //Numéro de séquence attendu par le receiver
+
+    private ArrayList<TCPSegment> segmentSent = new ArrayList<TCPSegment>(); //Liste des segments envoyé dans l'ordre
+
+    private ArrayList<TCPSegment> waitingSegment = new ArrayList<TCPSegment>(); //Liste des segments en attente
 	
-    /**
-     * 
-     * @param host
-     */
 	public GoBackNProtocol(IPHost host) {
-		this.host= host;
+		this.host = host;
     	host.getIPLayer().addListener(this.IP_PROTO_GOBACKN, this);
 	}
 	
-    /**
-     * 
-     * @param src
-     * @param datagram
-     * @throws Exception
-     */
 	@Override
 	public void receive(IPInterfaceAdapter src, Datagram datagram) throws Exception {
-    	TCPSegment segment= (TCPSegment) datagram.getPayload();
+    	TCPSegment segment = (TCPSegment) datagram.getPayload();
 		System.out.println("Data (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +
 				" host=" + host.name + ", dgram.src=" + datagram.src + ", dgram.dst=" +
 				datagram.dst + ", iif=" + src + ", data=" + segment);
-        if(segment.isAck()){
-            // ...
-        }
-        else{
-            // ...
+        if(segment.isAck()){ //Coté sender
+            int sequenceNumber = segment.getSequenceNumber();
+            if(sequenceNumber == this.segmentSent.get(0).getSequenceNumber()){
+                this.segmentSent.remove(0);
+                
+                if(this.waitingSegment.size() > 0){ //Si il reste des segments à envoyer
+                    TCPSegment segmentToSend = this.waitingSegment.get(0);
+                    host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segmentToSend);
+                    this.segmentSent.add(segmentToSend);
+                    this.waitingSegment.remove(0);
+                }
+            }
+        } else{ //Coté receiver
+            if(segment.getSequenceNumber() == this.expectedSequenceNumber){
+                sendAcknowledgment(datagram);
+                this.ackSequenceNumber++;
+                this.expectedSequenceNumber++;
+            }
         }
 	}
 
-    /**
-     * 
-     * @param data
-     * @param destination
-     * @throws Exception
-     */
-    public void sendData(int data, IPAddress destination) throws Exception {
+    public void sendData(int data, IPAddress destination) throws Exception{
         int[] segmentData = new int[]{data};
-        int sequenceNumber = 1;
-        host.getIPLayer().send(IPAddress.ANY, destination, IP_PROTO_GOBACKN, new TCPSegment(segmentData,sequenceNumber));
+        TCPSegment segment = new TCPSegment(segmentData, this.actualSequenceNumber);
+
+        if(this.segmentSent.size() < this.windowSize){ //On remplie la fenêtre
+            host.getIPLayer().send(IPAddress.ANY, destination, IP_PROTO_GOBACKN, segment);
+            this.segmentSent.add(segment);
+            this.actualSequenceNumber++;
+        } else{ //Si la fenêtre est pleine, on ajoute à la file d'attente
+            this.waitingSegment.add(segment);
+            this.actualSequenceNumber++;
+        }
+        
     }
 
-    /**
-     * 
-     * @param datagram
-     * @throws Exception
-     */
-    private void sendAcknowledgment(Datagram datagram) throws Exception {
-        int ackSequenceNumber = 1;
-        host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, new TCPSegment(ackSequenceNumber));
+    private void sendAcknowledgment(Datagram datagram) throws Exception{
+        host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, new TCPSegment(this.ackSequenceNumber));
     }
-
-
 }
