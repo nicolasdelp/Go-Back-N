@@ -19,17 +19,17 @@ public class GoBackNProtocol implements IPInterfaceListener {
 	
 	private final IPHost host;
 
-    private ArrayList<AbstractTimer> timers = new ArrayList<AbstractTimer>(); //Liste des timers
 
-    private final int windowSize = 3; //Taille de la fenêtre 
-    private final double time = 0.03; //Temps du timer en s
+    private final int windowSize = 5; //Taille de la fenêtre
+    private final double time = 0.0601; //Temps du timer en s
 
     private int actualSequenceNumber = 1; //Dernier numéro de séquence envoyé
-    private int ackSequenceNumber = 1; //Dernier numéro d'ACK de séquence envoyé
-    private int expectedSequenceNumber = 1; //Numéro de séquence attendu par le receiver
 
-    private ArrayList<TCPSegment> segmentSent = new ArrayList<TCPSegment>(); //Liste des segments envoyé dans l'ordre
     private ArrayList<TCPSegment> waitingSegment = new ArrayList<TCPSegment>(); //Liste des segments en attente
+    private ArrayList<TCPSegment> segmentSent = new ArrayList<TCPSegment>(); //Liste des segments envoyé dans l'ordre
+    private ArrayList<TCPSegment> segmentsReceived = new ArrayList<TCPSegment>(); //Liste des ségments reçus
+
+    private ArrayList<AbstractTimer> timers = new ArrayList<AbstractTimer>(); //Liste des timers
 	
 	public GoBackNProtocol(IPHost host) {
 		this.host = host;
@@ -41,64 +41,86 @@ public class GoBackNProtocol implements IPInterfaceListener {
     		super(scheduler, interval, false);
     	}
     	protected void run() throws Exception {
+            stop();
 			System.out.println("\u001B[31m Temps ecoule !");
 		}
     }
 	
+    /**
+     * 
+     * @param src
+     * @param datagram
+     * @throws Exception
+     */
 	@Override
 	public void receive(IPInterfaceAdapter src, Datagram datagram) throws Exception {
-    	TCPSegment segment = (TCPSegment) datagram.getPayload();
+    	TCPSegment segment = (TCPSegment) datagram.getPayload(); //On récupère le ségment
 		
-        if(segment.isAck()){ //Côté sender
-            int sequenceNumber = segment.getSequenceNumber();
-
-            if(sequenceNumber == this.segmentSent.get(0).getSequenceNumber()){
-                if(this.timers.get(0).isRunning() == true){ //Si le timer est OK
+        if(segment.isAck()){ //On vérifie si c'est un ACK ou un paquet
+            if(segment.getSequenceNumber() == this.segmentSent.get(0).getSequenceNumber()){ //Si c'est le premier segment envoyé
+                if(this.timers.get(0).isRunning() == true){ //Si le timer est toujours lancé
                     this.timers.get(0).stop(); //On arrête le timer
-                    System.out.println("\u001B[32m Data (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +
-                            " host=" + host.name + ", dgram.src=" + datagram.src + ", dgram.dst=" +
-                            datagram.dst + ", iif=" + src + ", data=" + segment);
                     this.timers.remove(0); //On retire le timer de la séquence
                     this.segmentSent.remove(0); //On retire le ségment de la liste des ségments envoyés
 
+                    System.out.println("\u001B[32m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK recu" +
+                            ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
+                    
                     if(this.waitingSegment.size() > 0){ //Si il reste des segments à envoyer
-                        TCPSegment segmentToSend = this.waitingSegment.get(0);
-                        host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segmentToSend);
-                        this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute un timer
-                        this.timers.get(this.timers.size()-1).start(); //On démarre le nouveau timer
-                        this.segmentSent.add(segmentToSend);
-                        this.waitingSegment.remove(0);
+                        TCPSegment segmentToSend = this.waitingSegment.get(0); //On récupère le prochain ségment à envoyer
+                        host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segmentToSend); //On envoie le ségment
+
+                        System.out.println("\u001B[33m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" Paquet envoye" +
+                                ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
+            
+                        this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute un timer pour le segment envoyé
+                        this.timers.get(this.timers.size()-1).start(); //On démarre le timer
+                        this.segmentSent.add(segmentToSend); //On ajoute le ségment à la liste des ségments envoyés
+                        this.waitingSegment.remove(0); //On supprime le segment de la liste d'attente
                     }
-                }else{ //Si le timer n'est pas OK
+                }else{ //Si le timer est fini
+                    for(int i=0; i<this.timers.size(); i++){ //On arrête tout les timers
+                        this.timers.get(i).stop();
+                    }
                     this.timers.clear(); //On supprime tout les timers
-                    for(int i=0; i< this.segmentSent.size(); i++){ //On renvoie tout les segments
+                    for(int i=0; i< this.segmentSent.size(); i++){ //On renvoie tout les ségments non ACK
                         host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, this.segmentSent.get(i));
-                        this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute un timer
-                        this.timers.get(this.timers.size()-1).start(); //On démarre le nouveau timer
+
+                        System.out.println("\u001B[33m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" Paquet reenvoye" +
+                                ", hote=" + host.name + ", destinataire=" + datagram.dst + ", donnees=" + this.segmentSent.get(i));
+
+                        this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute le timer
+                        this.timers.get(this.timers.size()-1).start(); //On démarre le timer
                     }
                 }
             }
-        }else{ //Coté receiver
-            System.out.println("\u001B[34m Data (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +
-				" host=" + host.name + ", dgram.src=" + datagram.src + ", dgram.dst=" +
-				datagram.dst + ", iif=" + src + ", data=" + segment);
-
-            if(segment.getSequenceNumber() == this.expectedSequenceNumber){
-                sendAcknowledgment(datagram);
-                this.ackSequenceNumber++;
-                this.expectedSequenceNumber++;
-            }
+        }else{ //Si c'est un paquet
+            System.out.println("\u001B[34m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" Donnees recues" +
+                    ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
+            
+            this.segmentsReceived.add(segment); //On ajoute aux segments déjà reçus
+            sendAcknowledgment(datagram, segment.getSequenceNumber()); //On envoie un ACK
         }
 	}
 
+    /**
+     * 
+     * @param data
+     * @param destination
+     * @throws Exception
+     */
     public void sendData(int data, IPAddress destination) throws Exception{
         int[] segmentData = new int[]{data};
         TCPSegment segment = new TCPSegment(segmentData, this.actualSequenceNumber);
 
         if(this.segmentSent.size() < this.windowSize){ //On remplie la fenêtre
-            host.getIPLayer().send(IPAddress.ANY, destination, IP_PROTO_GOBACKN, segment); //On envoie le segment
             this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute un timer
             this.timers.get(this.timers.size()-1).start(); //On démarre le timer
+            host.getIPLayer().send(IPAddress.ANY, destination, IP_PROTO_GOBACKN, segment); //On envoie le segment
+            
+            System.out.println("\u001B[33m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" Paquet envoye" +
+                    ", hote=" + host.name + ", destinataire=" + destination + ", donnees=" + segment);
+
             this.segmentSent.add(segment); //On ajoute le segment dans la liste des segments envoyés
             this.actualSequenceNumber++; //On actualise le numéro de séquence
         } else{ //Si la fenêtre est pleine, on ajoute à la file d'attente
@@ -107,7 +129,17 @@ public class GoBackNProtocol implements IPInterfaceListener {
         }
     }
 
-    private void sendAcknowledgment(Datagram datagram) throws Exception{
-        host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, new TCPSegment(this.ackSequenceNumber));
+    /**
+     * Envoie d'un ACK au Sender
+     * @param datagram
+     * @param sequenceNumber
+     * @throws Exception
+     */
+    private void sendAcknowledgment(Datagram datagram, int sequenceNumber) throws Exception{
+        TCPSegment segment = new TCPSegment(sequenceNumber); //Nouveau ségment de type ACK avec le numéro de séquence
+        host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segment); //Envoie de l'ACK
+
+        System.out.println("\u001B[35m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK envoye" +
+                ", hote=" + host.name + ", destinataire=" + datagram.dst + ", donnees=" + segment);
     }
 }
