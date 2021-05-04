@@ -41,8 +41,8 @@ public class GoBackNProtocol implements IPInterfaceListener {
     		super(scheduler, interval, false);
     	}
     	protected void run() throws Exception {
-            stop();
-			System.out.println("\u001B[31m Temps ecoule !");
+            this.stop();
+			// System.out.println("\u001B[31m Temps ecoule !");
 		}
     }
 	
@@ -64,14 +64,14 @@ public class GoBackNProtocol implements IPInterfaceListener {
                     this.segmentSent.remove(0); //On retire le ségment de la liste des ségments envoyés
 
                     System.out.println("\u001B[32m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK recu" +
-                            ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
+                            ", donnees=" + segment);
                     
                     if(this.waitingSegment.size() > 0){ //Si il reste des segments à envoyer
                         TCPSegment segmentToSend = this.waitingSegment.get(0); //On récupère le prochain ségment à envoyer
                         host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segmentToSend); //On envoie le ségment
 
                         System.out.println("\u001B[33m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" Paquet envoye" +
-                                ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
+                                ", hote=" + host.name + ", destinataire=" + datagram.dst + ", donnees=" + segmentToSend);
             
                         this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute un timer pour le segment envoyé
                         this.timers.get(this.timers.size()-1).start(); //On démarre le timer
@@ -79,9 +79,9 @@ public class GoBackNProtocol implements IPInterfaceListener {
                         this.waitingSegment.remove(0); //On supprime le segment de la liste d'attente
                     }
                 }else{ //Si le timer est fini
-                    for(int i=0; i<this.timers.size(); i++){ //On arrête tout les timers
-                        this.timers.get(i).stop();
-                    }
+                    // for(int i=0; i<this.timers.size(); i++){ //On arrête tout les timers
+                    //     this.timers.get(i).stop();
+                    // }
                     this.timers.clear(); //On supprime tout les timers
                     for(int i=0; i< this.segmentSent.size(); i++){ //On renvoie tout les ségments non ACK
                         host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, this.segmentSent.get(i));
@@ -96,7 +96,7 @@ public class GoBackNProtocol implements IPInterfaceListener {
             }
         }else{ //Si c'est un paquet
             System.out.println("\u001B[34m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" Donnees recues" +
-                    ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
+                    ", donnees=" + segment);
             
             this.segmentsReceived.add(segment); //On ajoute aux segments déjà reçus
             sendAcknowledgment(datagram, segment.getSequenceNumber()); //On envoie un ACK
@@ -114,7 +114,7 @@ public class GoBackNProtocol implements IPInterfaceListener {
         TCPSegment segment = new TCPSegment(segmentData, this.actualSequenceNumber);
 
         if(this.segmentSent.size() < this.windowSize){ //On remplie la fenêtre
-            this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time)); //On ajoute un timer
+            this.timers.add(new MyTimer(host.getNetwork().getScheduler(), this.time+(this.actualSequenceNumber-1)*0.005)); //On ajoute un timer
             this.timers.get(this.timers.size()-1).start(); //On démarre le timer
             host.getIPLayer().send(IPAddress.ANY, destination, IP_PROTO_GOBACKN, segment); //On envoie le segment
             
@@ -140,6 +140,6 @@ public class GoBackNProtocol implements IPInterfaceListener {
         host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segment); //Envoie de l'ACK
 
         System.out.println("\u001B[35m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK envoye" +
-                ", hote=" + host.name + ", destinataire=" + datagram.dst + ", donnees=" + segment);
+                ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment);
     }
 }
