@@ -21,7 +21,7 @@ public class Demo
 
     		IPHost host1= NetworkBuilder.createHost(network, "H1", IP_ADDR1, MAC_ADDR1); //On crée le premier noeud
     		host1.getIPLayer().addRoute(IP_ADDR2, "eth0"); //On crée une route sur une interface
-    		host1.addApplication(new AppSender(host1, IP_ADDR2, 10)); //On lui ajoute son application d'envoie
+    		host1.addApplication(new AppSender(host1, IP_ADDR2, 20)); //On lui ajoute son application d'envoie
 
     		IPHost host2= NetworkBuilder.createHost(network,"H2", IP_ADDR2, MAC_ADDR2); //On crée le second noeud
     		host2.getIPLayer().addRoute(IP_ADDR1, "eth0"); //On crée une route sur une interface
