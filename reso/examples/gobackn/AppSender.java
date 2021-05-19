@@ -12,9 +12,9 @@ public class AppSender extends AbstractApplication {
 
     /**
      * Constructeur du noeud qui envoie les paquets
-     * @param host L'IP du noeud qui envoie les paquets
+     * @param host L'IP du noeud
      * @param dst L'IP du noeud qui reçoit les paquets
-     * @param numberOfPackets Le nombre de paquets a envoyer
+     * @param numberOfPackets Le nombre de paquets à envoyer
      */
     public AppSender(IPHost host, IPAddress dst, int numberOfPackets) {	
     	super(host, "sender");
@@ -24,7 +24,7 @@ public class AppSender extends AbstractApplication {
 
     /**
      * Méthode qui démarre le noeud
-     * @throws Exception Une erreur au démarrage du noeud
+     * @throws Exception Une exception qui pourrait être levé
      */
     @Override
     public void start() throws Exception {

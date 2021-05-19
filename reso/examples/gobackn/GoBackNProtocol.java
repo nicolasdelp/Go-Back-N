@@ -1,5 +1,6 @@
 package reso.examples.gobackn;
 
+import java.util.Random;
 import java.util.ArrayList;
 
 import reso.common.*;
@@ -19,10 +20,15 @@ public class GoBackNProtocol implements IPInterfaceListener {
 	
 	private final IPHost host;
 
-    private final int maximumWindowSize = 10; //Taille maximum de la fenêtre
-    private int currentWindowSize = 1; //Taille actuelle de la fenêtre
-    private final double time = 0.1; //Temps pour les timers (en s)
+    //##########################   PARAMETRES   ###############################
+    //Le nombre de paquet qui sont envoyé se trouve dans la classe Demo.java
+    private final int maximumWindowSize = 10; //Taille de la fenêtre
+    private boolean test = true; //Perte de paquet
+    private int testNumber = 5; //Numéro de séquence du paquet à perdre
+    //#########################################################################
 
+    private int currentWindowSize = 1; //Taille actuelle de la fenêtre
+    private final double time = 0.080; //Temps pour les timers (en s)
     private int currentSequenceNumber = 1; //Numéro de séquence actuel
     
     private ArrayList<TCPSegment> segmentsSent = new ArrayList<TCPSegment>(); //Liste des segments envoyés (dans l'ordre)
@@ -33,17 +39,13 @@ public class GoBackNProtocol implements IPInterfaceListener {
     private boolean additiveIncrease = true;
     private boolean slowStart = false;
 
-
-    private boolean test = true; //Test de perte de paquet
-
     /**
      * Constructeur du protocol GoBackN
-     * @param host
+     * @param host L'IP du noeud
      */
 	public GoBackNProtocol(IPHost host) {
 		this.host = host;
     	host.getIPLayer().addListener(this.IP_PROTO_GOBACKN, this);
-        //Print l'ensemble de la configuration
 	}
 
     /**
@@ -61,9 +63,9 @@ public class GoBackNProtocol implements IPInterfaceListener {
 
     /**
      * Envoie d'un segment
-     * @param segment
-     * @param destination
-     * @throws Exception
+     * @param segment Un segment TCP
+     * @param destination L'IP de destination
+     * @throws Exception Une exception qui pourrait être levé
      */
     private void sendSegment(TCPSegment segment, IPAddress destination) throws Exception{
         host.getIPLayer().send(IPAddress.ANY, destination, IP_PROTO_GOBACKN, segment); //On envoie le segment
@@ -78,21 +80,22 @@ public class GoBackNProtocol implements IPInterfaceListener {
 
     /**
      * Envoie d'un ACK
-     * @param datagram
-     * @param sequenceNumber
-     * @throws Exception
+     * @param datagram Le datagramme
+     * @param sequenceNumber Le numéro de séquence de L'ACK
+     * @throws Exception Une exception qui pourrait être levé
      */
     private void sendAcknowledgment(Datagram datagram, int sequenceNumber) throws Exception{
-        if(sequenceNumber == 3){ //On crée une perte de paquet
+        if(sequenceNumber == this.testNumber){ //On crée une perte d'un paquet
             if(!this.test){
                 TCPSegment segment = new TCPSegment(sequenceNumber); //Nouveau ségment de type ACK avec le numéro de séquence
                 host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segment); //Envoie de l'ACK
 
                 System.out.println("\u001B[35m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK envoye" +
                         ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment + "\u001B[0m");
+            }else{
+                System.out.println("Le paquet " + this.testNumber + " a ete perdu !");
+                this.test = false;
             }
-            System.out.println("Un paquet a ete perdu !");
-            this.test = false;
         }else{
             TCPSegment segment = new TCPSegment(sequenceNumber); //Nouveau ségment de type ACK avec le numéro de séquence
             host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segment); //Envoie de l'ACK
@@ -100,34 +103,30 @@ public class GoBackNProtocol implements IPInterfaceListener {
             System.out.println("\u001B[35m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK envoye" +
                     ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment + "\u001B[0m");
         }
-
-
-        // TCPSegment segment = new TCPSegment(sequenceNumber); //On crée le segment (ACK) a envoyer
-        // host.getIPLayer().send(IPAddress.ANY, datagram.src, IP_PROTO_GOBACKN, segment); //On envoie le segment
-
-        // System.out.println("\u001B[35m (" + (int) (host.getNetwork().getScheduler().getCurrentTime()*1000) + "ms)" +" ACK envoye" +
-        //         ", hote=" + host.name + ", destinataire=" + datagram.src + ", donnees=" + segment + "\u001B[0m");
     }
 
     /**
      * Envoie d'un paquet
-     * @param data
-     * @param destination
-     * @throws Exception
+     * @param data Une liste de données (ici des entiers)
+     * @param destination L'IP de destination
+     * @throws Exception Une exception qui pourrait être levé
      */
     public void sendData(int data, IPAddress destination) throws Exception{
         int[] segmentData = new int[]{data}; //On met les données dans une liste
         TCPSegment segment = new TCPSegment(segmentData, this.currentSequenceNumber); //On crée le segment a envoyer
 
-        if(this.segmentsSent.size() < this.currentWindowSize){ //Additive increase
+        if(this.segmentsSent.size() < this.currentWindowSize){
             System.out.println("[ Taille de la fenetre : " + this.currentWindowSize + " ]");
-            sendSegment(segment, destination);
-        }else{ //On ajoute à la file d'attente
-            this.waitingQueue.add(segment);
+            sendSegment(segment, destination); //On envoie le segment
+        }else{
+            this.waitingQueue.add(segment); //On ajoute à la file d'attente
             this.currentSequenceNumber++;
         }
     }
 
+    /**
+     * Méthode qui paramètre les booléens utile à la congestion (Additive Increase)
+     */
     private void additiveIncrease(){
         this.slowStart = false;
         this.additiveIncrease = true;
@@ -136,23 +135,29 @@ public class GoBackNProtocol implements IPInterfaceListener {
         }
     }
 
+    /**
+     * Méthode qui paramètre les booléens utile à la congestion (Multiplicative Decrease)
+     */
     private void multiplicativeDecrease(){
-        this.currentWindowSize = (int) this.currentWindowSize/2; //A déterminer
+        this.currentWindowSize = (int) this.currentWindowSize/2; //On divise par 2 la fenêtre
         this.slowStart = false;
         this.additiveIncrease = true;
     }
 
+    /**
+     * Méthode qui paramètre les booléens utile à la congestion (Slow Start)
+     */
     private void slowStart(){
         this.slowStart = true;
         this.additiveIncrease = false;
-        this.currentWindowSize = this.currentWindowSize*2;
+        this.currentWindowSize = this.currentWindowSize*2; //On multiplie par 2 la taille de la fenêtre
     }
 
     /**
      * Protocol GoBack-N
-     * @param src
-     * @param datagram
-     * @throws Exception
+     * @param src L'IP source
+     * @param datagram Le datagramme
+     * @throws Exception Une exception qui pourrait être levé
      */
 	@Override
 	public void receive(IPInterfaceAdapter src, Datagram datagram) throws Exception {
@@ -166,34 +171,34 @@ public class GoBackNProtocol implements IPInterfaceListener {
         }
 
         if(segment.isAck()){ //Si c'est un ACK
-            if(this.ACKReceived.size() < segment.getSequenceNumber()){
+            if(this.ACKReceived.size() < segment.getSequenceNumber()){ //Gestion des 3 ACK dupliqués
                 this.ACKReceived.add(1); //Si il n'est pas encore dedans
             }else {
                 this.ACKReceived.set(segment.getSequenceNumber()-1, this.ACKReceived.get(segment.getSequenceNumber()-1)+1); //Sinon on ajoute 1 au nombre de fois qu'on a reçu cet ACK
             }
 
-            for(int elem : this.ACKReceived){
+            for(int elem : this.ACKReceived){ //Si on a reçu 3 fois le même ACK
                 if(elem == 3){ //Multiplicative Decrease
                     multiplicativeDecrease();
                     this.ACKReceived.clear();
                 }
             }
 
-            if(segment.getSequenceNumber() == this.segmentsSent.get(0).getSequenceNumber()){ //Si c'est le segment qu'on attend
+            if(segment.getSequenceNumber() == this.segmentsSent.get(0).getSequenceNumber()){ //Si on reçoit le segment qu'on attend
                 if(this.timers.get(0).isRunning()){ //Si le timer "tourne" toujours
                     this.timers.get(0).stop(); //On arrête le timer
                     this.timers.remove(0); //On supprime le timer
                     this.segmentsSent.remove(0); //On retire le segment de la liste des segments envoyés
                     
-                    if(this.slowStart){
+                    if(this.slowStart){ //Si on est en Slow Start
                         if(this.currentWindowSize < (this.maximumWindowSize/2)){
                             slowStart();
-                        }else{ //Si on passe la moitier du max de la fenêtre on passe à du additive increase
+                        }else{ //Si on passe la moitié de la fenêtre on passe à du additive increase
                             this.additiveIncrease = true;
                         }
                     }
 
-                    if(this.additiveIncrease){
+                    if(this.additiveIncrease){ //Si on est en Additive Increase
                         additiveIncrease();
                     }
                     
@@ -203,10 +208,11 @@ public class GoBackNProtocol implements IPInterfaceListener {
 
                     if(this.waitingQueue.size() > 0){ //S'il reste des segments à envoyer
                         System.out.println("[ Taille de la fenetre : " + this.currentWindowSize + " ]");
-                        int laps = this.currentWindowSize-this.segmentsSent.size(); //Nombre de segments a renvoyer
+
+                        int laps = this.currentWindowSize-this.segmentsSent.size(); //Nombre de segments a envoyer
                         for(int i=0; i<laps; i++){
                             TCPSegment segmentToSend = this.waitingQueue.get(0); //On récupère le prochain ségment à envoyer
-                            sendSegment(segmentToSend, datagram.src);
+                            sendSegment(segmentToSend, datagram.src); //On envoie le segment
                             this.waitingQueue.remove(0); //On supprime le segment de la liste d'attente
                         }
                     }
@@ -225,24 +231,24 @@ public class GoBackNProtocol implements IPInterfaceListener {
                 this.slowStart = true;
                 this.additiveIncrease = false;
 
-                ArrayList<TCPSegment> temp = new ArrayList<TCPSegment>(); //Liste intermédiaire
+                ArrayList<TCPSegment> temp = new ArrayList<TCPSegment>(); //Liste intermédiaire pour tout remettre dans la file d'attente
                 
-                for (TCPSegment i : this.segmentsSent) {
+                for (TCPSegment i : this.segmentsSent) { //Les segment envoyés non-acké
                     temp.add(i);
                 }
                 this.segmentsSent.clear();
 
-                for (TCPSegment i : this.waitingQueue) {
+                for (TCPSegment i : this.waitingQueue) { //Les segment de l'ancienne liste d'attente
                     temp.add(i);
                 }
                 this.waitingQueue.clear();
 
-                for (TCPSegment i : temp) {
+                for (TCPSegment i : temp) { //On remet tout dans la nouvelle liste d'attente
                     this.waitingQueue.add(i);
                 }
 
                 System.out.println("[ Taille de la fenetre : " + this.currentWindowSize + " ]");
-                sendSegment(this.waitingQueue.get(0), datagram.src);
+                sendSegment(this.waitingQueue.get(0), datagram.src); //On envoie le segment
                 this.waitingQueue.remove(0); //On retire le segment de la file
             }
         }

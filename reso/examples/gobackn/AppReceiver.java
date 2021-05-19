@@ -10,7 +10,7 @@ public class AppReceiver extends AbstractApplication {
     	
 	/**
 	 * Constructeur du noeud qui reçoit les paquets
-	 * @param host L'IP du noeud qui reçoit les paquets
+	 * @param host L'IP du noeud
 	 */
 	public AppReceiver(IPHost host) {
 		super(host, "receiver");
