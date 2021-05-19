@@ -23,7 +23,7 @@ public class Demo {
     		host1.getIPLayer().addRoute(IP_ADDR2, "eth0"); //On crée une route sur une interface
 
 			//C'est ici qu'on change le nombre de paquets à envoyer
-    		host1.addApplication(new AppSender(host1, IP_ADDR2, 10)); //On lui ajoute son application d'envoie
+    		host1.addApplication(new AppSender(host1, IP_ADDR2, 50)); //On lui ajoute son application d'envoie
 
     		IPHost host2= NetworkBuilder.createHost(network,"H2", IP_ADDR2, MAC_ADDR2); //On crée le second noeud
     		host2.getIPLayer().addRoute(IP_ADDR1, "eth0"); //On crée une route sur une interface
